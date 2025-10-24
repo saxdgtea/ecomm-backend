@@ -7,27 +7,14 @@ const User = require("../models/User");
  * @param {string} id - User ID
  * @returns {string} - Signed JWT token
  */
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || "30d",
-  });
-};
-
-/**
- * @desc Register a new user
- * @route POST /api/auth/register
- * @access Public
- */
 const registerUser = asyncHandler(async (req, res) => {
   const { name, email, password, role } = req.body;
 
-  // Validate required fields
   if (!name || !email || !password) {
     res.status(400);
     throw new Error("All fields (name, email, password) are required");
   }
 
-  // Check if email already exists
   const existingUser = await User.findOne({ email });
   if (existingUser) {
     res.status(400);
@@ -35,7 +22,6 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 
   try {
-    // Create user only if all validations pass
     const user = await User.create({
       name: name.trim(),
       email: email.toLowerCase(),
@@ -51,8 +37,8 @@ const registerUser = asyncHandler(async (req, res) => {
       throw new Error("User creation failed. Please try again.");
     }
 
-    // Respond only if user successfully saved
     res.status(201).json({
+      success: true,
       _id: user._id,
       name: user.name,
       email: user.email,
@@ -60,12 +46,14 @@ const registerUser = asyncHandler(async (req, res) => {
       token: generateToken(user._id),
     });
   } catch (err) {
-    console.error("User registration error:", err.message);
-    res.status(500);
-    throw new Error("Server error during user registration");
+    console.error("User registration error details:", err.message);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Unexpected server error during registration",
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    });
   }
 });
-
 /**
  * @desc Login user
  * @route POST /api/auth/login
