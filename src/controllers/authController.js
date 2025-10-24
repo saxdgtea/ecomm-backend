@@ -7,95 +7,133 @@ const User = require("../models/User");
  * @param {string} id - User ID
  * @returns {string} - Signed JWT token
  */
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE || "30d",
+  });
+};
+
+/**
+ * @desc    Register new user
+ * @route   POST /api/auth/register
+ * @access  Public
+ */
 const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role } = req.body;
-
-  if (!name || !email || !password) {
-    res.status(400);
-    throw new Error("All fields (name, email, password) are required");
-  }
-
-  const existingUser = await User.findOne({ email });
-  if (existingUser) {
-    res.status(400);
-    throw new Error("A user with this email already exists");
-  }
-
   try {
+    const { name, email, password, role } = req.body;
+
+    // Validate input
+    if (!name || !email || !password) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Please provide all required fields",
+        });
+    }
+
+    // Check if email already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "User already exists with this email",
+        });
+    }
+
+    // Create new user
     const user = await User.create({
-      name: name.trim(),
-      email: email.toLowerCase(),
+      name,
+      email,
       password,
-      role:
-        role && ["admin", "manager", "customer"].includes(role)
-          ? role
-          : "customer",
+      role: role || "customer",
     });
 
     if (!user) {
-      res.status(400);
-      throw new Error("User creation failed. Please try again.");
+      return res
+        .status(400)
+        .json({ success: false, message: "User creation failed" });
     }
 
+    // Return user + token
     res.status(201).json({
       success: true,
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      token: generateToken(user._id),
+      message: "User registered successfully",
+      data: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        token: generateToken(user._id),
+      },
     });
-  } catch (err) {
-    console.error("User registration error details:", err.message);
+  } catch (error) {
+    console.error("❌ Error during user registration:", error);
     res.status(500).json({
       success: false,
-      message: err.message || "Unexpected server error during registration",
-      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+      message: "Server error during user registration",
+      error: error.message,
     });
   }
 });
+
 /**
- * @desc Login user
- * @route POST /api/auth/login
- * @access Public
+ * @desc    Login user
+ * @route   POST /api/auth/login
+ * @access  Public
  */
 const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    res.status(400);
-    throw new Error("Please provide both email and password");
+    return res
+      .status(400)
+      .json({ success: false, message: "Please provide email and password" });
   }
 
   const user = await User.findOne({ email }).select("+password");
-  if (user && (await user.matchPassword(password))) {
-    res.json({
+  if (!user || !(await user.matchPassword(password))) {
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid email or password" });
+  }
+
+  res.json({
+    success: true,
+    message: "Login successful",
+    data: {
       _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
       token: generateToken(user._id),
-    });
-  } else {
-    res.status(401);
-    throw new Error("Invalid email or password");
-  }
+    },
+  });
 });
 
 /**
- * @desc Get logged-in user info
- * @route GET /api/auth/me
- * @access Private
+ * @desc    Get current user profile
+ * @route   GET /api/auth/me
+ * @access  Private
  */
 const getMe = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user._id).select("-password");
+  const user = await User.findById(req.user._id);
 
   if (!user) {
-    res.status(404);
-    throw new Error("User not found");
+    return res.status(404).json({ success: false, message: "User not found" });
   }
 
-  res.json(user);
+  res.json({
+    success: true,
+    data: {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
+  });
 });
 
 module.exports = {
