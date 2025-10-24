@@ -14,36 +14,44 @@ const generateToken = (id) => {
 };
 
 /**
- * @desc    Register new user
- * @route   POST /api/auth/register
- * @access  Public
+ * @desc Register a new user
+ * @route POST /api/auth/register
+ * @access Public
  */
 const registerUser = asyncHandler(async (req, res) => {
   const { name, email, password, role } = req.body;
 
-  // Validation
+  // Validate required fields
   if (!name || !email || !password) {
     res.status(400);
-    throw new Error("Please provide all required fields");
+    throw new Error("All fields (name, email, password) are required");
   }
 
-  // Check if user already exists
-  const userExists = await User.findOne({ email });
-
-  if (userExists) {
+  // Check if email already exists
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
     res.status(400);
-    throw new Error("User already exists with this email");
+    throw new Error("A user with this email already exists");
   }
 
-  // Create user
-  const user = await User.create({
-    name,
-    email,
-    password,
-    role: role || "customer", // Default to customer if not specified
-  });
+  try {
+    // Create user only if all validations pass
+    const user = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase(),
+      password,
+      role:
+        role && ["admin", "manager", "customer"].includes(role)
+          ? role
+          : "customer",
+    });
 
-  if (user) {
+    if (!user) {
+      res.status(400);
+      throw new Error("User creation failed. Please try again.");
+    }
+
+    // Respond only if user successfully saved
     res.status(201).json({
       _id: user._id,
       name: user.name,
@@ -51,29 +59,27 @@ const registerUser = asyncHandler(async (req, res) => {
       role: user.role,
       token: generateToken(user._id),
     });
-  } else {
-    res.status(400);
-    throw new Error("Invalid user data");
+  } catch (err) {
+    console.error("User registration error:", err.message);
+    res.status(500);
+    throw new Error("Server error during user registration");
   }
 });
 
 /**
- * @desc    Login user
- * @route   POST /api/auth/login
- * @access  Public
+ * @desc Login user
+ * @route POST /api/auth/login
+ * @access Public
  */
 const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  // Validation
   if (!email || !password) {
     res.status(400);
-    throw new Error("Please provide email and password");
+    throw new Error("Please provide both email and password");
   }
 
-  // Check for user (include password field)
   const user = await User.findOne({ email }).select("+password");
-
   if (user && (await user.matchPassword(password))) {
     res.json({
       _id: user._id,
@@ -89,24 +95,19 @@ const loginUser = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Get current user profile
- * @route   GET /api/auth/me
- * @access  Private
+ * @desc Get logged-in user info
+ * @route GET /api/auth/me
+ * @access Private
  */
 const getMe = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user._id).select("-password");
 
-  if (user) {
-    res.json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-    });
-  } else {
+  if (!user) {
     res.status(404);
     throw new Error("User not found");
   }
+
+  res.json(user);
 });
 
 module.exports = {
