@@ -4,13 +4,30 @@ const mongoose = require("mongoose");
  * Order Schema
  * Represents customer purchases
  * Links user to products with quantities
+ * Enhanced with customer delivery info
  */
 const orderSchema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false, // Allow guest orders
+    },
+    // Customer Info (for guest orders via WhatsApp)
+    customerInfo: {
+      name: {
+        type: String,
+        required: true,
+      },
+      phone: {
+        type: String,
+        required: true,
+      },
+      address: {
+        type: String,
+        required: true,
+      },
+      notes: String,
     },
     items: [
       {
@@ -40,6 +57,11 @@ const orderSchema = new mongoose.Schema(
       type: String,
       enum: ["pending", "processing", "shipped", "delivered", "cancelled"],
       default: "pending",
+    },
+    orderSource: {
+      type: String,
+      enum: ["website", "whatsapp", "admin"],
+      default: "website",
     },
   },
   {
